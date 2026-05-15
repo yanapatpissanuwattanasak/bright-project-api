@@ -9,6 +9,7 @@ export class ResendEmailAdapter implements IEmailNotifier {
   private readonly from = 'portfolio@bright.dev'
 
   async send(payload: EmailPayload): Promise<void> {
+    if (!process.env.RESEND_API_KEY) return
     try {
       await this.resend.emails.send({
         from: this.from,

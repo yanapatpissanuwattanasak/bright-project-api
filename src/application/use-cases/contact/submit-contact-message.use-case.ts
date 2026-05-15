@@ -42,10 +42,12 @@ export class SubmitContactMessageUseCase {
 
     await this.messageRepo.save(message)
 
-    await this.emailNotifier.send({
-      to: process.env.NOTIFICATION_EMAIL ?? '',
-      subject: `New contact: ${input.name} (${input.projectType})`,
-      html: `<p><strong>${input.name}</strong> (${input.email}) sent a message:</p><blockquote>${input.message}</blockquote>`,
-    })
+    if (process.env.NOTIFICATION_EMAIL) {
+      await this.emailNotifier.send({
+        to: process.env.NOTIFICATION_EMAIL,
+        subject: `New contact: ${input.name} (${input.projectType})`,
+        html: `<p><strong>${input.name}</strong> (${input.email}) sent a message:</p><blockquote>${input.message}</blockquote>`,
+      })
+    }
   }
 }
