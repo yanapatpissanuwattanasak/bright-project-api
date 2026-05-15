@@ -3,10 +3,25 @@ FROM node:20-alpine AS builder
 WORKDIR /app
 
 COPY package*.json ./
-RUN npm ci && npm install --no-save tsc-alias
+RUN npm ci
 
 COPY . .
-RUN npm run build && npx tsc-alias
+RUN npm run build
+
+# Verify dist/main.js was produced; print structure and fail if not
+RUN test -f dist/main.js || \
+    (echo "=== dist structure ===" && find dist -name "*.js" | head -20 && exit 1)
+
+# Create a runtime path-alias register so production can resolve @domain/* etc.
+RUN printf "require('tsconfig-paths').register({\n\
+  baseUrl: __dirname,\n\
+  paths: {\n\
+    '@domain/*':         ['./domain/*'],\n\
+    '@application/*':    ['./application/*'],\n\
+    '@infrastructure/*': ['./infrastructure/*'],\n\
+    '@presentation/*':   ['./presentation/*']\n\
+  }\n\
+});\n" > dist/register.js
 
 # ---- Migrate Stage ----
 FROM builder AS migrate
@@ -20,9 +35,9 @@ WORKDIR /app
 ENV NODE_ENV=production
 
 COPY package*.json ./
-RUN npm ci --omit=dev
+RUN npm ci --omit=dev && npm install --no-save tsconfig-paths
 
 COPY --from=builder /app/dist ./dist
 
 EXPOSE 3000
-CMD ["node", "dist/main"]
+CMD ["node", "-r", "/app/dist/register.js", "dist/main"]
