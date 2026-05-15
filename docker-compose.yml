@@ -29,5 +29,18 @@ services:
       db:
         condition: service_healthy
 
+  migrate:
+    build:
+      context: .
+      target: migrate
+    env_file:
+      - path: .env
+        required: false
+    environment:
+      DATABASE_URL: postgresql://${POSTGRES_USER:-root}:${POSTGRES_PASSWORD:-1234}@db:5432/${POSTGRES_DB:-bright_portfolio}
+    depends_on:
+      db:
+        condition: service_healthy
+
 volumes:
   postgres_data:

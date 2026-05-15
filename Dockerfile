@@ -8,6 +8,11 @@ RUN npm ci && npm install --no-save tsc-alias
 COPY . .
 RUN npm run build && npx tsc-alias
 
+# ---- Migrate Stage ----
+FROM builder AS migrate
+ENV NODE_ENV=production
+CMD ["npx", "typeorm-ts-node-commonjs", "migration:run", "-d", "ormconfig.ts"]
+
 # ---- Production Stage ----
 FROM node:20-alpine AS production
 WORKDIR /app
