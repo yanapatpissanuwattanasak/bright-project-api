@@ -3,10 +3,10 @@ FROM node:20-alpine AS builder
 WORKDIR /app
 
 COPY package*.json ./
-RUN npm ci
+RUN npm ci && npm install --no-save tsc-alias
 
 COPY . .
-RUN npm run build -- --webpack
+RUN npm run build && npx tsc-alias
 
 # ---- Production Stage ----
 FROM node:20-alpine AS production
