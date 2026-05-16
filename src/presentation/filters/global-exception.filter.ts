@@ -13,6 +13,11 @@ export class GlobalExceptionFilter implements ExceptionFilter {
   private readonly logger = new Logger('ExceptionFilter')
 
   catch(exception: unknown, host: ArgumentsHost): void {
+    if (host.getType() === 'ws') {
+      this.logger.error('Unhandled WebSocket exception', exception)
+      return
+    }
+
     const ctx = host.switchToHttp()
     const response = ctx.getResponse<Response>()
 

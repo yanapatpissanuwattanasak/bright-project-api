@@ -3,7 +3,10 @@ import { map, Observable } from 'rxjs'
 
 @Injectable()
 export class ResponseTransformInterceptor<T> implements NestInterceptor<T, unknown> {
-  intercept(_context: ExecutionContext, next: CallHandler<T>): Observable<unknown> {
+  intercept(context: ExecutionContext, next: CallHandler<T>): Observable<unknown> {
+    if (context.getType() === 'ws') {
+      return next.handle()
+    }
     return next.handle().pipe(
       map((data) => ({
         success: true,
