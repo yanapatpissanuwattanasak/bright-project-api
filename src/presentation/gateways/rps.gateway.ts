@@ -2,11 +2,12 @@ import {
   WebSocketGateway,
   WebSocketServer,
   SubscribeMessage,
+  OnGatewayConnection,
   OnGatewayDisconnect,
   ConnectedSocket,
   MessageBody,
 } from '@nestjs/websockets'
-import { Inject } from '@nestjs/common'
+import { Inject, Logger } from '@nestjs/common'
 import { Cron } from '@nestjs/schedule'
 import { Namespace, Socket } from 'socket.io'
 import { I_RPS_ROOM_REPOSITORY, IRpsRoomRepository } from '@domain/repositories/i-rps-room.repository'
@@ -23,9 +24,10 @@ function losingChoice(winner: Choice): Choice {
 }
 
 @WebSocketGateway({ namespace: '/rps', cors: { origin: process.env.RPS_WS_CORS_ORIGIN ?? '*' } })
-export class RpsGateway implements OnGatewayDisconnect {
+export class RpsGateway implements OnGatewayConnection, OnGatewayDisconnect {
   @WebSocketServer() server: Namespace
 
+  private readonly logger = new Logger(RpsGateway.name)
   private readonly roundTimers = new Map<string, NodeJS.Timeout>()
   private readonly reconnectTimers = new Map<string, NodeJS.Timeout>()
 
@@ -37,17 +39,25 @@ export class RpsGateway implements OnGatewayDisconnect {
     @Inject(I_RPS_ROOM_REPOSITORY) private readonly roomRepo: IRpsRoomRepository,
   ) {}
 
+  handleConnection(client: Socket): void {
+    this.logger.log(`connect id=${client.id}`)
+  }
+
   @SubscribeMessage('create_room')
   async handleCreateRoom(
     @ConnectedSocket() client: Socket,
     @MessageBody() payload: { sessionId: string },
   ): Promise<void> {
+    this.logger.log(`create_room id=${client.id} data=${JSON.stringify(payload)}`)
     try {
       const room = await this.createRoomUC.execute({
         sessionId: payload.sessionId,
         socketId: client.id,
       })
-      await client.join(room.roomCode)
+      console.log("createRoomUC result", room);
+      
+      const data = await client.join(room.roomCode)
+      console.log("join result", data);
       client.emit('room_created', { roomCode: room.roomCode })
     } catch (err) {
       client.emit('error', { code: 'CREATE_FAILED', message: (err as Error).message })
@@ -59,6 +69,7 @@ export class RpsGateway implements OnGatewayDisconnect {
     @ConnectedSocket() client: Socket,
     @MessageBody() payload: { roomCode: string; sessionId: string },
   ): Promise<void> {
+    this.logger.log(`join_room id=${client.id} data=${JSON.stringify(payload)}`)
     try {
       const { room, isReconnect } = await this.joinRoomUC.execute({
         roomCode: payload.roomCode,
@@ -98,6 +109,7 @@ export class RpsGateway implements OnGatewayDisconnect {
     @ConnectedSocket() client: Socket,
     @MessageBody() payload: { roomCode: string; sessionId: string; heroId: string },
   ): Promise<void> {
+    this.logger.log(`select_hero id=${client.id} data=${JSON.stringify(payload)}`)
     try {
       const { room, allReady, playerIndex } = await this.selectHeroUC.execute({
         roomCode: payload.roomCode,
@@ -139,6 +151,7 @@ export class RpsGateway implements OnGatewayDisconnect {
     @ConnectedSocket() client: Socket,
     @MessageBody() payload: { roomCode: string; sessionId: string; choice: Choice },
   ): Promise<void> {
+    this.logger.log(`submit_choice id=${client.id} data=${JSON.stringify(payload)}`)
     try {
       const result = await this.submitChoiceUC.execute({
         roomCode: payload.roomCode,
@@ -168,6 +181,7 @@ export class RpsGateway implements OnGatewayDisconnect {
   }
 
   async handleDisconnect(client: Socket): Promise<void> {
+    this.logger.log(`disconnect id=${client.id}`)
     try {
       const room = await this.roomRepo.findBySocketId(client.id)
       if (!room || room.phase === 'gameover' || room.phase === 'lobby') return
