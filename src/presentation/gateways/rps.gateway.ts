@@ -40,7 +40,9 @@ export class RpsGateway implements OnGatewayConnection, OnGatewayDisconnect {
   ) {}
 
   handleConnection(client: Socket): void {
-    this.logger.log(`connect id=${client.id}`)
+    this.logger.log(
+      `connect id=${client.id} transport=${client.conn.transport.name} origin=${client.handshake.headers.origin ?? '-'} query=${JSON.stringify(client.handshake.query)}`,
+    )
   }
 
   @SubscribeMessage('create_room')
@@ -54,12 +56,14 @@ export class RpsGateway implements OnGatewayConnection, OnGatewayDisconnect {
         sessionId: payload.sessionId,
         socketId: client.id,
       })
-      console.log("createRoomUC result", room);
-      
-      const data = await client.join(room.roomCode)
-      console.log("join result", data);
+      this.logger.log(`create_room ok roomCode=${room.roomCode} sessionId=${payload.sessionId}`)
+
+      await client.join(room.roomCode)
+      this.logger.log(`create_room socket joined room=${room.roomCode}`)
+
       client.emit('room_created', { roomCode: room.roomCode })
     } catch (err) {
+      this.logger.error(`create_room failed id=${client.id} err=${(err as Error).message}`, (err as Error).stack)
       client.emit('error', { code: 'CREATE_FAILED', message: (err as Error).message })
     }
   }
@@ -78,10 +82,12 @@ export class RpsGateway implements OnGatewayConnection, OnGatewayDisconnect {
       })
 
       await client.join(room.roomCode)
+      this.logger.log(`join_room socket joined room=${room.roomCode} isReconnect=${isReconnect}`)
 
       if (isReconnect) {
         clearTimeout(this.reconnectTimers.get(room.roomCode))
         this.reconnectTimers.delete(room.roomCode)
+        this.logger.log(`join_room reconnect cleared timer roomCode=${room.roomCode}`)
 
         const self = room.players.find(p => p.sessionId === payload.sessionId)!
         const opponent = room.players.find(p => p.sessionId !== payload.sessionId)!
@@ -93,13 +99,16 @@ export class RpsGateway implements OnGatewayConnection, OnGatewayDisconnect {
           opponentHero: opponent.heroId,
         })
         client.to(room.roomCode).emit('player_reconnected', {})
+        this.logger.log(`join_room emitted player_reconnected phase=${room.phase} playerHp=${self.hp} opponentHp=${opponent.hp}`)
       } else {
         this.server.to(room.roomCode).emit('player_joined', {
           sessionId: payload.sessionId,
           roomCode: room.roomCode,
         })
+        this.logger.log(`join_room emitted player_joined roomCode=${room.roomCode} sessionId=${payload.sessionId}`)
       }
     } catch (err) {
+      this.logger.error(`join_room failed id=${client.id} err=${(err as Error).message}`, (err as Error).stack)
       client.emit('error', { code: (err as Error).message, message: (err as Error).message })
     }
   }
@@ -117,17 +126,20 @@ export class RpsGateway implements OnGatewayConnection, OnGatewayDisconnect {
         socketId: client.id,
         heroId: payload.heroId,
       })
+      this.logger.log(`select_hero ok roomCode=${payload.roomCode} playerIndex=${playerIndex} heroId=${payload.heroId} allReady=${allReady}`)
 
       client.emit('hero_selected', { player: 'self', heroId: payload.heroId })
       client.to(room.roomCode).emit('hero_selected', { player: 'opponent', heroId: payload.heroId })
 
       if (allReady) {
+        this.logger.log(`select_hero all players ready — emitting battle_start roomCode=${room.roomCode}`)
         const p0 = room.players[0]
         const p1 = room.players[1]
 
         const emitBattleStart = (socketId: string, idx: number) => {
           const self = room.players[idx]
           const opp = room.players[idx === 0 ? 1 : 0]
+          this.logger.log(`select_hero battle_start socketId=${socketId} playerHero=${self.heroId} opponentHero=${opp.heroId} playerHp=${self.hp} opponentHp=${opp.hp}`)
           this.server.sockets.get(socketId)?.emit('battle_start', {
             playerHero: self.heroId,
             opponentHero: opp.heroId,
@@ -142,6 +154,7 @@ export class RpsGateway implements OnGatewayConnection, OnGatewayDisconnect {
         this.startRoundTimer(room.roomCode)
       }
     } catch (err) {
+      this.logger.error(`select_hero failed id=${client.id} err=${(err as Error).message}`, (err as Error).stack)
       client.emit('error', { code: (err as Error).message, message: (err as Error).message })
     }
   }
@@ -159,23 +172,28 @@ export class RpsGateway implements OnGatewayConnection, OnGatewayDisconnect {
         socketId: client.id,
         choice: payload.choice,
       })
+      this.logger.log(`submit_choice executed roomCode=${payload.roomCode} sessionId=${payload.sessionId} choice=${payload.choice} resolved=${result.resolved}`)
 
       if (!result.resolved) {
+        this.logger.log(`submit_choice waiting for opponent roomCode=${payload.roomCode}`)
         client.emit('waiting_for_opponent', {})
         return
       }
 
       clearTimeout(this.roundTimers.get(payload.roomCode))
       this.roundTimers.delete(payload.roomCode)
+      this.logger.log(`submit_choice round resolved roomCode=${payload.roomCode} outcome=${result.outcome} gameOver=${result.gameOver} winnerId=${result.winnerId ?? '-'}`)
 
       this.emitRoundResult(result)
 
       if (result.gameOver) {
+        this.logger.log(`submit_choice game_over roomCode=${payload.roomCode} winner=${result.winnerId}`)
         this.server.to(payload.roomCode).emit('game_over', { winner: result.winnerId })
       } else {
         this.startRoundTimer(payload.roomCode)
       }
     } catch (err) {
+      this.logger.error(`submit_choice failed id=${client.id} err=${(err as Error).message}`, (err as Error).stack)
       client.emit('error', { code: (err as Error).message, message: (err as Error).message })
     }
   }
@@ -184,19 +202,31 @@ export class RpsGateway implements OnGatewayConnection, OnGatewayDisconnect {
     this.logger.log(`disconnect id=${client.id}`)
     try {
       const room = await this.roomRepo.findBySocketId(client.id)
-      if (!room || room.phase === 'gameover' || room.phase === 'lobby') return
+      if (!room) {
+        this.logger.log(`disconnect no room found for id=${client.id}`)
+        return
+      }
+      if (room.phase === 'gameover' || room.phase === 'lobby') {
+        this.logger.log(`disconnect skipped roomCode=${room.roomCode} phase=${room.phase}`)
+        return
+      }
 
       const playerIdx = room.players.findIndex(p => p.socketId === client.id)
-      if (playerIdx === -1) return
+      if (playerIdx === -1) {
+        this.logger.warn(`disconnect player not found in room roomCode=${room.roomCode} id=${client.id}`)
+        return
+      }
 
       room.players[playerIdx].connected = false
       await this.roomRepo.save(room)
+      this.logger.log(`disconnect marked disconnected roomCode=${room.roomCode} playerIdx=${playerIdx}`)
 
       const remaining = room.players.find((_, i) => i !== playerIdx)
       if (remaining) {
         this.server.sockets
           .get(remaining.socketId)
           ?.emit('player_disconnected', { reconnectWindowSecs: 15 })
+        this.logger.log(`disconnect emitted player_disconnected to remaining socketId=${remaining.socketId}`)
       }
 
       clearTimeout(this.reconnectTimers.get(room.roomCode))
@@ -205,28 +235,34 @@ export class RpsGateway implements OnGatewayConnection, OnGatewayDisconnect {
         15_000,
       )
       this.reconnectTimers.set(room.roomCode, timer)
-    } catch {
-      // ignore disconnect errors
+      this.logger.log(`disconnect reconnect timer set roomCode=${room.roomCode} windowSecs=15`)
+    } catch (err) {
+      this.logger.error(`disconnect error id=${client.id} err=${(err as Error).message}`, (err as Error).stack)
     }
   }
 
   @Cron('* * * * *')
   async evictExpiredRooms(): Promise<void> {
     const count = await this.roomRepo.deleteExpired()
-    if (count > 0) console.log(`RPS: evicted ${count} expired room(s)`)
+    if (count > 0) this.logger.log(`evictExpiredRooms count=${count}`)
   }
 
   private startRoundTimer(roomCode: string): void {
     clearTimeout(this.roundTimers.get(roomCode))
     const timer = setTimeout(() => this.handleRoundTimeout(roomCode), 30_000)
     this.roundTimers.set(roomCode, timer)
+    this.logger.log(`startRoundTimer set roomCode=${roomCode} timeoutSecs=30`)
   }
 
   private async handleRoundTimeout(roomCode: string): Promise<void> {
     this.roundTimers.delete(roomCode)
+    this.logger.warn(`handleRoundTimeout fired roomCode=${roomCode}`)
     try {
       const room = await this.roomRepo.findByCode(roomCode)
-      if (!room || room.phase !== 'battle' || room.players.length < 2) return
+      if (!room || room.phase !== 'battle' || room.players.length < 2) {
+        this.logger.warn(`handleRoundTimeout skipped roomCode=${roomCode} phase=${room?.phase ?? 'null'} players=${room?.players.length ?? 0}`)
+        return
+      }
 
       const p0 = room.players[0]
       const p1 = room.players[1]
@@ -236,51 +272,68 @@ export class RpsGateway implements OnGatewayConnection, OnGatewayDisconnect {
 
       if (p0Choice === null && p1Choice !== null) {
         p0Choice = losingChoice(p1Choice)
+        this.logger.log(`handleRoundTimeout p0 auto-assigned losingChoice=${p0Choice}`)
       } else if (p1Choice === null && p0Choice !== null) {
         p1Choice = losingChoice(p0Choice)
+        this.logger.log(`handleRoundTimeout p1 auto-assigned losingChoice=${p1Choice}`)
       } else if (p0Choice === null && p1Choice === null) {
         p0Choice = 'rock'
         p1Choice = 'rock'
+        this.logger.log(`handleRoundTimeout both null — defaulting both to rock`)
       } else {
+        this.logger.log(`handleRoundTimeout both already chose — skipping roomCode=${roomCode}`)
         return
       }
 
       const result = await this.submitChoiceUC.resolveWithChoices(roomCode, p0Choice, p1Choice)
       if (!result.resolved) return
+      this.logger.log(`handleRoundTimeout resolved outcome=${result.outcome} gameOver=${result.gameOver} winnerId=${result.winnerId ?? '-'}`)
 
       this.emitRoundResult(result)
 
       if (result.gameOver) {
+        this.logger.log(`handleRoundTimeout game_over roomCode=${roomCode} winner=${result.winnerId}`)
         this.server.to(roomCode).emit('game_over', { winner: result.winnerId })
       } else {
         this.startRoundTimer(roomCode)
       }
-    } catch {
-      // ignore timeout errors
+    } catch (err) {
+      this.logger.error(`handleRoundTimeout error roomCode=${roomCode} err=${(err as Error).message}`, (err as Error).stack)
     }
   }
 
   private async handleReconnectTimeout(roomCode: string, disconnectedSocketId: string): Promise<void> {
     this.reconnectTimers.delete(roomCode)
+    this.logger.warn(`handleReconnectTimeout fired roomCode=${roomCode} disconnectedSocketId=${disconnectedSocketId}`)
     try {
       const room = await this.roomRepo.findByCode(roomCode)
-      if (!room || room.phase === 'gameover') return
+      if (!room || room.phase === 'gameover') {
+        this.logger.warn(`handleReconnectTimeout skipped roomCode=${roomCode} phase=${room?.phase ?? 'null'}`)
+        return
+      }
 
       const disconnected = room.players.find(p => p.socketId === disconnectedSocketId)
-      if (!disconnected || disconnected.connected) return
+      if (!disconnected || disconnected.connected) {
+        this.logger.log(`handleReconnectTimeout player already reconnected roomCode=${roomCode}`)
+        return
+      }
 
       const winner = room.players.find(p => p.socketId !== disconnectedSocketId)
-      if (!winner) return
+      if (!winner) {
+        this.logger.warn(`handleReconnectTimeout no winner found roomCode=${roomCode}`)
+        return
+      }
 
       room.phase = 'gameover'
       room.expiresAt = new Date(Date.now() + 10 * 60 * 1000)
       await this.roomRepo.save(room)
+      this.logger.log(`handleReconnectTimeout forfeited roomCode=${roomCode} winner=${winner.sessionId}`)
 
       this.server.sockets
         .get(winner.socketId)
         ?.emit('game_over', { winner: winner.sessionId })
-    } catch {
-      // ignore timeout errors
+    } catch (err) {
+      this.logger.error(`handleReconnectTimeout error roomCode=${roomCode} err=${(err as Error).message}`, (err as Error).stack)
     }
   }
 
@@ -299,6 +352,7 @@ export class RpsGateway implements OnGatewayConnection, OnGatewayDisconnect {
       const roundResult =
         result.outcome === 'draw' ? 'draw' : p.win ? 'win' : 'lose'
 
+      this.logger.log(`emitRoundResult socketId=${p.socketId} result=${roundResult} playerChoice=${p.myChoice} opponentChoice=${p.oppChoice} playerHp=${p.myHp} opponentHp=${p.oppHp}`)
       this.server.sockets.get(p.socketId)?.emit('round_result', {
         playerChoice: p.myChoice,
         opponentChoice: p.oppChoice,
