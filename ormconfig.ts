@@ -9,5 +9,5 @@ export default new DataSource({
   entities: ['src/infrastructure/database/orm-entities/*.orm-entity.ts'],
   migrations: ['src/infrastructure/database/migrations/*.ts'],
   synchronize: false,
-  logging: process.env.NODE_ENV !== 'production',
+  logging: true
 })
