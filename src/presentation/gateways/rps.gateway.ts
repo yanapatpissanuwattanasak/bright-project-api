@@ -7,7 +7,8 @@ import {
   ConnectedSocket,
   MessageBody,
 } from '@nestjs/websockets'
-import { Inject, Logger } from '@nestjs/common'
+import { Inject, Logger, UseInterceptors } from '@nestjs/common'
+import { WsLoggingInterceptor } from '@presentation/interceptors/ws-logging.interceptor'
 import { Cron } from '@nestjs/schedule'
 import { Namespace, Socket } from 'socket.io'
 import { I_RPS_ROOM_REPOSITORY, IRpsRoomRepository } from '@domain/repositories/i-rps-room.repository'
@@ -23,6 +24,7 @@ function losingChoice(winner: Choice): Choice {
   return 'paper'
 }
 
+@UseInterceptors(WsLoggingInterceptor)
 @WebSocketGateway({ namespace: '/rps', cors: { origin:  '*' } })
 export class RpsGateway implements OnGatewayConnection, OnGatewayDisconnect {
   @WebSocketServer() server: Namespace
