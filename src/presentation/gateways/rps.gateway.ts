@@ -23,7 +23,7 @@ function losingChoice(winner: Choice): Choice {
   return 'paper'
 }
 
-@WebSocketGateway({ namespace: '/rps', cors: { origin: process.env.RPS_WS_CORS_ORIGIN ?? '*' } })
+@WebSocketGateway({ namespace: '/rps', cors: { origin:  '*' } })
 export class RpsGateway implements OnGatewayConnection, OnGatewayDisconnect {
   @WebSocketServer() server: Namespace
 

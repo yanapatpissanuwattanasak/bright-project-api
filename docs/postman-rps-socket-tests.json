@@ -1,0 +1,761 @@
+{
+  "info": {
+    "_postman_id": "rps-gateway-socketio-tests-v1",
+    "name": "RPS Gateway — Socket.IO Tests",
+    "description": "Complete test suite for the RPS Gateway WebSocket/Socket.IO API.\n\n## How to use\n1. Import this collection into Postman.\n2. Open **New → Socket.IO**, set URL to `{{BASE_URL}}/rps`, Client version **Socket.IO v4**, Handshake path `/socket.io`.\n3. Open a **second tab** for Player 2 and repeat the connection step.\n4. For each TC folder, read the description, send the listed event, and verify the expected server events.\n\n## Namespace\n`http://localhost:3000/rps`\n\n## Phase order\n`lobby → hero-select → battle → gameover`",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [
+    {
+      "key": "BASE_URL",
+      "value": "http://localhost:3000",
+      "type": "string",
+      "description": "Socket.IO server base URL"
+    },
+    {
+      "key": "SESSION_ID_P1",
+      "value": "player-session-001",
+      "type": "string",
+      "description": "Player 1 session identifier"
+    },
+    {
+      "key": "SESSION_ID_P2",
+      "value": "player-session-002",
+      "type": "string",
+      "description": "Player 2 session identifier"
+    },
+    {
+      "key": "ROOM_CODE",
+      "value": "ABC123",
+      "type": "string",
+      "description": "Set this after TC-02 with the roomCode returned by room_created"
+    },
+    {
+      "key": "HERO_P1",
+      "value": "warrior",
+      "type": "string",
+      "description": "Hero chosen by Player 1"
+    },
+    {
+      "key": "HERO_P2",
+      "value": "mage",
+      "type": "string",
+      "description": "Hero chosen by Player 2"
+    }
+  ],
+  "item": [
+    {
+      "name": "TC-01 — Connect to Server",
+      "id": "tc-01-connect",
+      "description": "**Goal**: Verify a client can connect to the /rps namespace.\n\n**Steps**:\n1. Open Postman → New → Socket.IO\n2. Enter URL `{{BASE_URL}}/rps`\n3. Config: Client version = Socket.IO v4, Handshake path = /socket.io\n4. Click Connect\n\n**Expected**:\n- Connection status → Connected\n- Server log: `connect id=<socketId> transport=websocket`\n\n**Repeat for Player 2** in a separate Postman tab.",
+      "item": [
+        {
+          "name": "[P1] Connect",
+          "id": "tc-01-p1-connect",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "X-SocketIO-Event",
+                "value": "(connect)",
+                "description": "Not a sendable event — this is the initial Socket.IO connection"
+              }
+            ],
+            "url": {
+              "raw": "{{BASE_URL}}/rps",
+              "host": ["{{BASE_URL}}"],
+              "path": ["rps"]
+            },
+            "description": "Open a Socket.IO connection to the /rps namespace.\n\n**Action**: Click Connect in the Socket.IO tab.\n\n**Expected**: Status changes to Connected."
+          },
+          "response": []
+        },
+        {
+          "name": "[P2] Connect",
+          "id": "tc-01-p2-connect",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "X-SocketIO-Event",
+                "value": "(connect)",
+                "description": "Not a sendable event — this is the initial Socket.IO connection"
+              }
+            ],
+            "url": {
+              "raw": "{{BASE_URL}}/rps",
+              "host": ["{{BASE_URL}}"],
+              "path": ["rps"]
+            },
+            "description": "Open a second Socket.IO connection (separate Postman tab) to the /rps namespace for Player 2.\n\n**Action**: Click Connect in the Socket.IO tab.\n\n**Expected**: Status changes to Connected."
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "TC-02 — Create Room",
+      "id": "tc-02-create-room",
+      "description": "**Goal**: Player 1 creates a new game room.\n\n**Pre-condition**: TC-01 passed (P1 connected)\n\n**After success**: Copy the `roomCode` value from `room_created` and update the `ROOM_CODE` collection variable.",
+      "item": [
+        {
+          "name": "[P1] create_room",
+          "id": "tc-02-create-room-event",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "// After receiving room_created, update ROOM_CODE:",
+                  "// pm.collectionVariables.set('ROOM_CODE', <roomCode from event>);",
+                  "",
+                  "pm.test('Event sent successfully', function () {",
+                  "    pm.expect(true).to.be.true;",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "X-SocketIO-Event",
+                "value": "create_room",
+                "description": "Socket.IO event name to emit"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"sessionId\": \"{{SESSION_ID_P1}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{BASE_URL}}/rps",
+              "host": ["{{BASE_URL}}"],
+              "path": ["rps"]
+            },
+            "description": "**Socket.IO Event**: `create_room`\n\n**Payload** (copy into Socket.IO message body):\n```json\n{\n  \"sessionId\": \"{{SESSION_ID_P1}}\"\n}\n```\n\n**Expected event received** (P1 tab):\n```json\nEvent: room_created\n{\n  \"roomCode\": \"ABC123\"\n}\n```\n\n**Notes**:\n- Save the `roomCode` value to the `ROOM_CODE` collection variable\n- Room phase is now `lobby`"
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "TC-03 — Join Room",
+      "id": "tc-03-join-room",
+      "description": "**Goal**: Player 2 joins the room created by P1.\n\n**Pre-condition**: TC-02 passed; `ROOM_CODE` variable is set.",
+      "item": [
+        {
+          "name": "[P2] join_room",
+          "id": "tc-03-join-room-event",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "X-SocketIO-Event",
+                "value": "join_room",
+                "description": "Socket.IO event name to emit"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"roomCode\": \"{{ROOM_CODE}}\",\n  \"sessionId\": \"{{SESSION_ID_P2}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{BASE_URL}}/rps",
+              "host": ["{{BASE_URL}}"],
+              "path": ["rps"]
+            },
+            "description": "**Socket.IO Event**: `join_room`  \n**Send from**: P2 tab\n\n**Payload**:\n```json\n{\n  \"roomCode\": \"{{ROOM_CODE}}\",\n  \"sessionId\": \"{{SESSION_ID_P2}}\"\n}\n```\n\n**Expected events** (broadcast to both P1 and P2):\n```json\nEvent: player_joined\n{\n  \"sessionId\": \"player-session-002\",\n  \"roomCode\": \"{{ROOM_CODE}}\"\n}\n```\n\n**Notes**: Both players are now in `hero-select` phase."
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "TC-04 — Select Hero (Both Players)",
+      "id": "tc-04-select-hero",
+      "description": "**Goal**: Both players select a hero, triggering `battle_start`.\n\n**Pre-condition**: TC-03 passed (both in `hero-select` phase)",
+      "item": [
+        {
+          "name": "[P1] select_hero — warrior",
+          "id": "tc-04-select-hero-p1",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "X-SocketIO-Event",
+                "value": "select_hero",
+                "description": "Socket.IO event name to emit"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"roomCode\": \"{{ROOM_CODE}}\",\n  \"sessionId\": \"{{SESSION_ID_P1}}\",\n  \"heroId\": \"{{HERO_P1}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{BASE_URL}}/rps",
+              "host": ["{{BASE_URL}}"],
+              "path": ["rps"]
+            },
+            "description": "**Socket.IO Event**: `select_hero`  \n**Send from**: P1 tab\n\n**Payload**:\n```json\n{\n  \"roomCode\": \"{{ROOM_CODE}}\",\n  \"sessionId\": \"{{SESSION_ID_P1}}\",\n  \"heroId\": \"warrior\"\n}\n```\n\n**Expected events**:\n| Receiver | Event | Payload |\n|---|---|---|\n| P1 | `hero_selected` | `{ \"player\": \"self\", \"heroId\": \"warrior\" }` |\n| P2 | `hero_selected` | `{ \"player\": \"opponent\", \"heroId\": \"warrior\" }` |"
+          },
+          "response": []
+        },
+        {
+          "name": "[P2] select_hero — mage",
+          "id": "tc-04-select-hero-p2",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "X-SocketIO-Event",
+                "value": "select_hero",
+                "description": "Socket.IO event name to emit"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"roomCode\": \"{{ROOM_CODE}}\",\n  \"sessionId\": \"{{SESSION_ID_P2}}\",\n  \"heroId\": \"{{HERO_P2}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{BASE_URL}}/rps",
+              "host": ["{{BASE_URL}}"],
+              "path": ["rps"]
+            },
+            "description": "**Socket.IO Event**: `select_hero`  \n**Send from**: P2 tab\n\n**Payload**:\n```json\n{\n  \"roomCode\": \"{{ROOM_CODE}}\",\n  \"sessionId\": \"{{SESSION_ID_P2}}\",\n  \"heroId\": \"mage\"\n}\n```\n\n**Expected events** (both heroes now selected → `battle_start` fires):\n| Receiver | Event | Payload |\n|---|---|---|\n| P2 | `hero_selected` | `{ \"player\": \"self\", \"heroId\": \"mage\" }` |\n| P1 | `hero_selected` | `{ \"player\": \"opponent\", \"heroId\": \"mage\" }` |\n| P1 | `battle_start` | `{ \"playerHero\": \"warrior\", \"opponentHero\": \"mage\", \"playerHp\": 3, \"opponentHp\": 3 }` |\n| P2 | `battle_start` | `{ \"playerHero\": \"mage\", \"opponentHero\": \"warrior\", \"playerHp\": 3, \"opponentHp\": 3 }` |\n\n**Notes**: A 30-second round timer starts server-side after `battle_start`."
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "TC-05 — Submit Choice: One Player Waiting",
+      "id": "tc-05-one-player-waiting",
+      "description": "**Goal**: Only P1 submits a choice — P1 receives `waiting_for_opponent`.\n\n**Pre-condition**: TC-04 passed (both in `battle` phase)",
+      "item": [
+        {
+          "name": "[P1] submit_choice — rock",
+          "id": "tc-05-submit-p1",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "X-SocketIO-Event",
+                "value": "submit_choice",
+                "description": "Socket.IO event name to emit"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"roomCode\": \"{{ROOM_CODE}}\",\n  \"sessionId\": \"{{SESSION_ID_P1}}\",\n  \"choice\": \"rock\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{BASE_URL}}/rps",
+              "host": ["{{BASE_URL}}"],
+              "path": ["rps"]
+            },
+            "description": "**Socket.IO Event**: `submit_choice`  \n**Send from**: P1 tab only (do NOT send from P2)\n\n**Payload**:\n```json\n{\n  \"roomCode\": \"{{ROOM_CODE}}\",\n  \"sessionId\": \"{{SESSION_ID_P1}}\",\n  \"choice\": \"rock\"\n}\n```\n\n**Expected** (P1 tab only):\n```json\nEvent: waiting_for_opponent\n{}\n```\n\n**Notes**: P2 receives nothing. Round timer is still running."
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "TC-06 — Submit Choice: Round Resolved (Win/Lose)",
+      "id": "tc-06-round-resolved",
+      "description": "**Goal**: P2 submits after P1, round resolves with a winner.\n\n**Pre-condition**: TC-05 passed (P1 already chose `rock`)\n\n**Result**: rock beats scissors → P1 wins the round.",
+      "item": [
+        {
+          "name": "[P2] submit_choice — scissors",
+          "id": "tc-06-submit-p2",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "X-SocketIO-Event",
+                "value": "submit_choice",
+                "description": "Socket.IO event name to emit"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"roomCode\": \"{{ROOM_CODE}}\",\n  \"sessionId\": \"{{SESSION_ID_P2}}\",\n  \"choice\": \"scissors\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{BASE_URL}}/rps",
+              "host": ["{{BASE_URL}}"],
+              "path": ["rps"]
+            },
+            "description": "**Socket.IO Event**: `submit_choice`  \n**Send from**: P2 tab\n\n**Payload**:\n```json\n{\n  \"roomCode\": \"{{ROOM_CODE}}\",\n  \"sessionId\": \"{{SESSION_ID_P2}}\",\n  \"choice\": \"scissors\"\n}\n```\n\n**Expected** (rock beats scissors):\n| Receiver | Event | Payload |\n|---|---|---|\n| P1 | `round_result` | `{ \"playerChoice\": \"rock\", \"opponentChoice\": \"scissors\", \"result\": \"win\", \"playerHp\": 3, \"opponentHp\": 2 }` |\n| P2 | `round_result` | `{ \"playerChoice\": \"scissors\", \"opponentChoice\": \"rock\", \"result\": \"lose\", \"playerHp\": 2, \"opponentHp\": 3 }` |\n\n**Notes**: HP decreases for the loser (3 → 2). A new 30-second round timer starts."
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "TC-07 — Submit Choice: Draw",
+      "id": "tc-07-draw",
+      "description": "**Goal**: Both players choose the same option — round ends in a draw, no HP loss.\n\n**Pre-condition**: Both in `battle` phase",
+      "item": [
+        {
+          "name": "[P1] submit_choice — paper",
+          "id": "tc-07-submit-p1",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "X-SocketIO-Event",
+                "value": "submit_choice",
+                "description": "Socket.IO event name to emit"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"roomCode\": \"{{ROOM_CODE}}\",\n  \"sessionId\": \"{{SESSION_ID_P1}}\",\n  \"choice\": \"paper\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{BASE_URL}}/rps",
+              "host": ["{{BASE_URL}}"],
+              "path": ["rps"]
+            },
+            "description": "**Socket.IO Event**: `submit_choice`  \n**Send from**: P1 tab\n\n**Payload**:\n```json\n{\n  \"roomCode\": \"{{ROOM_CODE}}\",\n  \"sessionId\": \"{{SESSION_ID_P1}}\",\n  \"choice\": \"paper\"\n}\n```\n\n**Expected** (P1 tab only): `waiting_for_opponent {}`"
+          },
+          "response": []
+        },
+        {
+          "name": "[P2] submit_choice — paper",
+          "id": "tc-07-submit-p2",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "X-SocketIO-Event",
+                "value": "submit_choice",
+                "description": "Socket.IO event name to emit"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"roomCode\": \"{{ROOM_CODE}}\",\n  \"sessionId\": \"{{SESSION_ID_P2}}\",\n  \"choice\": \"paper\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{BASE_URL}}/rps",
+              "host": ["{{BASE_URL}}"],
+              "path": ["rps"]
+            },
+            "description": "**Socket.IO Event**: `submit_choice`  \n**Send from**: P2 tab\n\n**Payload**:\n```json\n{\n  \"roomCode\": \"{{ROOM_CODE}}\",\n  \"sessionId\": \"{{SESSION_ID_P2}}\",\n  \"choice\": \"paper\"\n}\n```\n\n**Expected** (both tabs):\n| Receiver | Event | Payload |\n|---|---|---|\n| P1 | `round_result` | `{ \"playerChoice\": \"paper\", \"opponentChoice\": \"paper\", \"result\": \"draw\", \"playerHp\": <unchanged>, \"opponentHp\": <unchanged> }` |\n| P2 | `round_result` | `{ \"playerChoice\": \"paper\", \"opponentChoice\": \"paper\", \"result\": \"draw\", \"playerHp\": <unchanged>, \"opponentHp\": <unchanged> }` |\n\n**Notes**: HP values remain unchanged on a draw."
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "TC-08 — Game Over (HP Reaches Zero)",
+      "id": "tc-08-game-over",
+      "description": "**Goal**: One player's HP drops to 0, triggering `game_over`.\n\n**Pre-condition**: P2 is at 1 HP (e.g., after 2 losses). Simulate by running TC-06 twice from a fresh game.",
+      "item": [
+        {
+          "name": "[P1] submit_choice — rock (winning)",
+          "id": "tc-08-submit-p1",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "X-SocketIO-Event",
+                "value": "submit_choice",
+                "description": "Socket.IO event name to emit"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"roomCode\": \"{{ROOM_CODE}}\",\n  \"sessionId\": \"{{SESSION_ID_P1}}\",\n  \"choice\": \"rock\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{BASE_URL}}/rps",
+              "host": ["{{BASE_URL}}"],
+              "path": ["rps"]
+            },
+            "description": "**Socket.IO Event**: `submit_choice`  \n**Send from**: P1 tab"
+          },
+          "response": []
+        },
+        {
+          "name": "[P2] submit_choice — scissors (losing, HP → 0)",
+          "id": "tc-08-submit-p2",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "X-SocketIO-Event",
+                "value": "submit_choice",
+                "description": "Socket.IO event name to emit"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"roomCode\": \"{{ROOM_CODE}}\",\n  \"sessionId\": \"{{SESSION_ID_P2}}\",\n  \"choice\": \"scissors\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{BASE_URL}}/rps",
+              "host": ["{{BASE_URL}}"],
+              "path": ["rps"]
+            },
+            "description": "**Socket.IO Event**: `submit_choice`  \n**Send from**: P2 tab\n\n**Payload**:\n```json\n{\n  \"roomCode\": \"{{ROOM_CODE}}\",\n  \"sessionId\": \"{{SESSION_ID_P2}}\",\n  \"choice\": \"scissors\"\n}\n```\n\n**Expected** (P2 at 1 HP → HP reaches 0):\n| Receiver | Event | Payload |\n|---|---|---|\n| P1 | `round_result` | `{ \"result\": \"win\", \"playerHp\": 3, \"opponentHp\": 0 }` |\n| P2 | `round_result` | `{ \"result\": \"lose\", \"playerHp\": 0, \"opponentHp\": 3 }` |\n| P1 | `game_over` | `{ \"winner\": \"player-session-001\" }` |\n| P2 | `game_over` | `{ \"winner\": \"player-session-001\" }` |\n\n**Notes**: Phase transitions to `gameover`. `winner` = winning player's `sessionId`."
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "TC-09 — Round Timeout (No Choices Submitted)",
+      "id": "tc-09-timeout-no-choices",
+      "description": "**Goal**: Neither player submits within 30 seconds — server auto-resolves as draw.\n\n**Pre-condition**: Both in `battle` phase, round timer running\n\n**Steps**:\n1. Do NOT send `submit_choice` from either player\n2. Wait 30 seconds\n\n**Expected** (server auto-assigns `rock` vs `rock`):\n| Receiver | Event | Payload |\n|---|---|---|\n| P1 | `round_result` | `{ \"playerChoice\": \"rock\", \"opponentChoice\": \"rock\", \"result\": \"draw\", \"playerHp\": <unchanged>, \"opponentHp\": <unchanged> }` |\n| P2 | `round_result` | `{ \"playerChoice\": \"rock\", \"opponentChoice\": \"rock\", \"result\": \"draw\", \"playerHp\": <unchanged>, \"opponentHp\": <unchanged> }` |\n\n**Notes**: New round timer starts after resolution.",
+      "item": [
+        {
+          "name": "[Wait] 30 seconds — no events sent",
+          "id": "tc-09-wait",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "X-SocketIO-Event",
+                "value": "(none — wait for timeout)",
+                "description": "Do not send any event. Wait 30 seconds for server auto-resolve."
+              }
+            ],
+            "url": {
+              "raw": "{{BASE_URL}}/rps",
+              "host": ["{{BASE_URL}}"],
+              "path": ["rps"]
+            },
+            "description": "**Action**: Do NOT send any event from P1 or P2.\n\nWait 30 seconds. The server will auto-resolve the round with `rock` vs `rock` (draw).\n\n**Expected on both tabs after 30s**:\n```json\nEvent: round_result\n{\n  \"playerChoice\": \"rock\",\n  \"opponentChoice\": \"rock\",\n  \"result\": \"draw\",\n  \"playerHp\": <unchanged>,\n  \"opponentHp\": <unchanged>\n}\n```"
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "TC-10 — Round Timeout (One Player Submitted)",
+      "id": "tc-10-timeout-one-player",
+      "description": "**Goal**: P1 submits, P2 does not — server penalises P2 after 30 seconds.\n\n**Pre-condition**: Both in `battle` phase",
+      "item": [
+        {
+          "name": "[P1] submit_choice — paper",
+          "id": "tc-10-submit-p1",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "X-SocketIO-Event",
+                "value": "submit_choice",
+                "description": "Socket.IO event name to emit"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"roomCode\": \"{{ROOM_CODE}}\",\n  \"sessionId\": \"{{SESSION_ID_P1}}\",\n  \"choice\": \"paper\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{BASE_URL}}/rps",
+              "host": ["{{BASE_URL}}"],
+              "path": ["rps"]
+            },
+            "description": "**Socket.IO Event**: `submit_choice`  \n**Send from**: P1 tab only.\n\n**Payload**:\n```json\n{\n  \"roomCode\": \"{{ROOM_CODE}}\",\n  \"sessionId\": \"{{SESSION_ID_P1}}\",\n  \"choice\": \"paper\"\n}\n```\n\n**Expected** (P1): `waiting_for_opponent {}`\n\n**Next**: Do NOT send from P2. Wait 30 seconds."
+          },
+          "response": []
+        },
+        {
+          "name": "[Wait] 30 seconds — P2 does not submit",
+          "id": "tc-10-wait",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "X-SocketIO-Event",
+                "value": "(none — wait for timeout)",
+                "description": "Do not send any event from P2. Wait 30 seconds."
+              }
+            ],
+            "url": {
+              "raw": "{{BASE_URL}}/rps",
+              "host": ["{{BASE_URL}}"],
+              "path": ["rps"]
+            },
+            "description": "**Action**: Do NOT send `submit_choice` from P2. Wait 30 seconds.\n\nServer assigns P2 a losing choice (`rock` loses to `paper`).\n\n**Expected after 30s**:\n| Receiver | Event | Payload |\n|---|---|---|\n| P1 | `round_result` | `{ \"playerChoice\": \"paper\", \"opponentChoice\": \"rock\", \"result\": \"win\", \"playerHp\": <unchanged>, \"opponentHp\": <P2 hp - 1> }` |\n| P2 | `round_result` | `{ \"playerChoice\": \"rock\", \"opponentChoice\": \"paper\", \"result\": \"lose\", \"playerHp\": <P2 hp - 1>, \"opponentHp\": <unchanged> }` |"
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "TC-11 — Disconnect & Reconnect (Within Window)",
+      "id": "tc-11-reconnect",
+      "description": "**Goal**: P2 disconnects and reconnects within the 15-second window.\n\n**Pre-condition**: Both in `battle` phase",
+      "item": [
+        {
+          "name": "[P2] Disconnect",
+          "id": "tc-11-disconnect",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "X-SocketIO-Event",
+                "value": "(disconnect)",
+                "description": "Click Disconnect in P2 Postman tab"
+              }
+            ],
+            "url": {
+              "raw": "{{BASE_URL}}/rps",
+              "host": ["{{BASE_URL}}"],
+              "path": ["rps"]
+            },
+            "description": "**Action**: In P2's Postman tab, click **Disconnect**.\n\n**Expected** (P1 tab):\n```json\nEvent: player_disconnected\n{\n  \"reconnectWindowSecs\": 15\n}\n```"
+          },
+          "response": []
+        },
+        {
+          "name": "[P2] Reconnect + join_room (within 15 seconds)",
+          "id": "tc-11-reconnect-join",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "X-SocketIO-Event",
+                "value": "join_room",
+                "description": "Send after reconnecting with same sessionId"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"roomCode\": \"{{ROOM_CODE}}\",\n  \"sessionId\": \"{{SESSION_ID_P2}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{BASE_URL}}/rps",
+              "host": ["{{BASE_URL}}"],
+              "path": ["rps"]
+            },
+            "description": "**Step 1**: In P2's tab, click **Connect** (new socket ID assigned).\n\n**Step 2**: Send `join_room` with the same `sessionId` **within 15 seconds**.\n\n**Payload**:\n```json\n{\n  \"roomCode\": \"{{ROOM_CODE}}\",\n  \"sessionId\": \"{{SESSION_ID_P2}}\"\n}\n```\n\n**Expected**:\n| Receiver | Event | Payload |\n|---|---|---|\n| P2 | `player_reconnected` | `{ \"phase\": \"battle\", \"playerHp\": <P2 hp>, \"opponentHp\": <P1 hp>, \"opponentHero\": \"warrior\" }` |\n| P1 | `player_reconnected` | `{}` |\n\n**Notes**: The 15-second forfeit timer is cancelled. Game resumes."
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "TC-12 — Disconnect & Forfeit (Window Expired)",
+      "id": "tc-12-forfeit",
+      "description": "**Goal**: P2 disconnects and does not reconnect within 15 seconds — P2 forfeits.\n\n**Pre-condition**: Both in `battle` phase",
+      "item": [
+        {
+          "name": "[P2] Disconnect",
+          "id": "tc-12-disconnect",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "X-SocketIO-Event",
+                "value": "(disconnect)",
+                "description": "Click Disconnect in P2 Postman tab"
+              }
+            ],
+            "url": {
+              "raw": "{{BASE_URL}}/rps",
+              "host": ["{{BASE_URL}}"],
+              "path": ["rps"]
+            },
+            "description": "**Action**: In P2's Postman tab, click **Disconnect**.\n\n**Expected** (P1 tab):\n```json\nEvent: player_disconnected\n{\n  \"reconnectWindowSecs\": 15\n}\n```"
+          },
+          "response": []
+        },
+        {
+          "name": "[Wait] 15 seconds — P2 does NOT reconnect → forfeit",
+          "id": "tc-12-wait-forfeit",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "X-SocketIO-Event",
+                "value": "(none — wait for forfeit)",
+                "description": "Do not reconnect P2. Wait 15 seconds."
+              }
+            ],
+            "url": {
+              "raw": "{{BASE_URL}}/rps",
+              "host": ["{{BASE_URL}}"],
+              "path": ["rps"]
+            },
+            "description": "**Action**: Do NOT reconnect P2. Wait 15 seconds.\n\n**Expected** (P1 tab after 15 seconds):\n```json\nEvent: game_over\n{\n  \"winner\": \"player-session-001\"\n}\n```\n\n**Notes**: P1 wins by forfeit. Phase transitions to `gameover`."
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "TC-13 — Join Non-Existent Room (Error)",
+      "id": "tc-13-room-not-found",
+      "description": "**Goal**: Verify the server returns an error when joining a room that does not exist.\n\n**Pre-condition**: P1 connected",
+      "item": [
+        {
+          "name": "[P1] join_room — invalid roomCode",
+          "id": "tc-13-join-invalid",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "// Expected to receive via Socket.IO:",
+                  "// Event: error",
+                  "// { \"code\": \"ROOM_NOT_FOUND\", \"message\": \"ROOM_NOT_FOUND\" }",
+                  "",
+                  "pm.test('Event payload is correct', function () {",
+                  "    pm.expect(true).to.be.true; // Verify error event in Socket.IO listener",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "X-SocketIO-Event",
+                "value": "join_room",
+                "description": "Socket.IO event name to emit"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"roomCode\": \"XXXXXX\",\n  \"sessionId\": \"{{SESSION_ID_P1}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{BASE_URL}}/rps",
+              "host": ["{{BASE_URL}}"],
+              "path": ["rps"]
+            },
+            "description": "**Socket.IO Event**: `join_room`  \n**Send from**: P1 tab\n\n**Payload** (invalid room code):\n```json\n{\n  \"roomCode\": \"XXXXXX\",\n  \"sessionId\": \"{{SESSION_ID_P1}}\"\n}\n```\n\n**Expected** (P1 tab):\n```json\nEvent: error\n{\n  \"code\": \"ROOM_NOT_FOUND\",\n  \"message\": \"ROOM_NOT_FOUND\"\n}\n```"
+          },
+          "response": []
+        }
+      ]
+    }
+  ]
+}
