@@ -45,6 +45,10 @@ export class RpsGateway implements OnGatewayConnection, OnGatewayDisconnect {
     this.logger.log(
       `connect id=${client.id} transport=${client.conn.transport.name} origin=${client.handshake.headers.origin ?? '-'} query=${JSON.stringify(client.handshake.query)}`,
     )
+    client.use(([event, ...args], next) => {
+      this.logger.log(`→ [${event}] id=${client.id} payload=${JSON.stringify(args[0] ?? {})}`)
+      next()
+    })
   }
 
   @SubscribeMessage('create_room')
