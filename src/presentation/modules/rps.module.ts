@@ -3,6 +3,7 @@ import { TypeOrmModule } from '@nestjs/typeorm'
 import { RpsGateway } from '../gateways/rps.gateway'
 import { CreateRoomUseCase } from '@application/use-cases/rps/create-room.use-case'
 import { JoinRoomUseCase } from '@application/use-cases/rps/join-room.use-case'
+import { MatchmakeUseCase } from '@application/use-cases/rps/matchmake.use-case'
 import { SelectHeroUseCase } from '@application/use-cases/rps/select-hero.use-case'
 import { SubmitChoiceUseCase } from '@application/use-cases/rps/submit-choice.use-case'
 import { I_RPS_ROOM_REPOSITORY } from '@domain/repositories/i-rps-room.repository'
@@ -15,6 +16,7 @@ import { RpsRoomTypeormRepository } from '@infrastructure/database/repositories/
     RpsGateway,
     CreateRoomUseCase,
     JoinRoomUseCase,
+    MatchmakeUseCase,
     SelectHeroUseCase,
     SubmitChoiceUseCase,
     { provide: I_RPS_ROOM_REPOSITORY, useClass: RpsRoomTypeormRepository },

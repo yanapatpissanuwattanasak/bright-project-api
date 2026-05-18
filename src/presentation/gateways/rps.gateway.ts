@@ -15,6 +15,7 @@ import { I_RPS_ROOM_REPOSITORY, IRpsRoomRepository } from '@domain/repositories/
 import { Choice } from '@domain/entities/rps-room.entity'
 import { CreateRoomUseCase } from '@application/use-cases/rps/create-room.use-case'
 import { JoinRoomUseCase } from '@application/use-cases/rps/join-room.use-case'
+import { MatchmakeUseCase } from '@application/use-cases/rps/matchmake.use-case'
 import { SelectHeroUseCase } from '@application/use-cases/rps/select-hero.use-case'
 import { SubmitChoiceUseCase } from '@application/use-cases/rps/submit-choice.use-case'
 
@@ -32,10 +33,12 @@ export class RpsGateway implements OnGatewayConnection, OnGatewayDisconnect {
   private readonly logger = new Logger(RpsGateway.name)
   private readonly roundTimers = new Map<string, NodeJS.Timeout>()
   private readonly reconnectTimers = new Map<string, NodeJS.Timeout>()
+  private readonly matchmakingQueue: Array<{ sessionId: string; socketId: string }> = []
 
   constructor(
     private readonly createRoomUC: CreateRoomUseCase,
     private readonly joinRoomUC: JoinRoomUseCase,
+    private readonly matchmakeUC: MatchmakeUseCase,
     private readonly selectHeroUC: SelectHeroUseCase,
     private readonly submitChoiceUC: SubmitChoiceUseCase,
     @Inject(I_RPS_ROOM_REPOSITORY) private readonly roomRepo: IRpsRoomRepository,
@@ -116,6 +119,32 @@ export class RpsGateway implements OnGatewayConnection, OnGatewayDisconnect {
     } catch (err) {
       this.logger.error(`join_room failed id=${client.id} err=${(err as Error).message}`, (err as Error).stack)
       client.emit('error', { code: (err as Error).message, message: (err as Error).message })
+    }
+  }
+
+  @SubscribeMessage('join_queue')
+  handleJoinQueue(
+    @ConnectedSocket() client: Socket,
+    @MessageBody() payload: { sessionId: string },
+  ): void {
+    if (this.matchmakingQueue.some(p => p.sessionId === payload.sessionId)) return
+
+    this.matchmakingQueue.push({ sessionId: payload.sessionId, socketId: client.id })
+    client.emit('queue_joined', { position: this.matchmakingQueue.length })
+    this.logger.log(`join_queue id=${client.id} sessionId=${payload.sessionId} queueSize=${this.matchmakingQueue.length}`)
+
+    void this.tryMatch()
+  }
+
+  @SubscribeMessage('leave_queue')
+  handleLeaveQueue(
+    @ConnectedSocket() client: Socket,
+    @MessageBody() payload: { sessionId: string },
+  ): void {
+    const idx = this.matchmakingQueue.findIndex(p => p.sessionId === payload.sessionId)
+    if (idx !== -1) {
+      this.matchmakingQueue.splice(idx, 1)
+      this.logger.log(`leave_queue id=${client.id} sessionId=${payload.sessionId} queueSize=${this.matchmakingQueue.length}`)
     }
   }
 
@@ -206,6 +235,13 @@ export class RpsGateway implements OnGatewayConnection, OnGatewayDisconnect {
 
   async handleDisconnect(client: Socket): Promise<void> {
     this.logger.log(`disconnect id=${client.id}`)
+
+    const queueIdx = this.matchmakingQueue.findIndex(p => p.socketId === client.id)
+    if (queueIdx !== -1) {
+      this.matchmakingQueue.splice(queueIdx, 1)
+      this.logger.log(`disconnect removed from queue id=${client.id} queueSize=${this.matchmakingQueue.length}`)
+    }
+
     try {
       const room = await this.roomRepo.findBySocketId(client.id)
       if (!room) {
@@ -340,6 +376,37 @@ export class RpsGateway implements OnGatewayConnection, OnGatewayDisconnect {
         ?.emit('game_over', { winner: winner.sessionId })
     } catch (err) {
       this.logger.error(`handleReconnectTimeout error roomCode=${roomCode} err=${(err as Error).message}`, (err as Error).stack)
+    }
+  }
+
+  private async tryMatch(): Promise<void> {
+    if (this.matchmakingQueue.length < 2) return
+
+    const [p1, p2] = this.matchmakingQueue.splice(0, 2)
+    this.logger.log(`tryMatch attempting p1=${p1.sessionId} p2=${p2.sessionId}`)
+
+    try {
+      const room = await this.matchmakeUC.execute({
+        p1SessionId: p1.sessionId,
+        p1SocketId: p1.socketId,
+        p2SessionId: p2.sessionId,
+        p2SocketId: p2.socketId,
+      })
+
+      const p1Socket = this.server.sockets.get(p1.socketId)
+      const p2Socket = this.server.sockets.get(p2.socketId)
+
+      await p1Socket?.join(room.roomCode)
+      await p2Socket?.join(room.roomCode)
+
+      p1Socket?.emit('match_found', { roomCode: room.roomCode })
+      p2Socket?.emit('match_found', { roomCode: room.roomCode })
+
+      this.logger.log(`tryMatch matched roomCode=${room.roomCode} p1=${p1.sessionId} p2=${p2.sessionId}`)
+    } catch (err) {
+      this.logger.error(`tryMatch failed err=${(err as Error).message}`)
+      this.server.sockets.get(p1.socketId)?.emit('error', { code: 'MATCH_FAILED', message: 'Matchmaking failed, please try again' })
+      this.server.sockets.get(p2.socketId)?.emit('error', { code: 'MATCH_FAILED', message: 'Matchmaking failed, please try again' })
     }
   }
 
