@@ -7,6 +7,7 @@ import { ContactModule } from './contact.module'
 import { AdminModule } from './admin.module'
 import { AuthModule } from './auth.module'
 import { RpsModule } from './rps.module'
+import { PokemonCardModule } from './pokemon-card.module'
 
 @Module({
   imports: [
@@ -23,6 +24,7 @@ import { RpsModule } from './rps.module'
     AdminModule,
     AuthModule,
     RpsModule,
+    PokemonCardModule,
   ],
 })
 export class AppModule {}
